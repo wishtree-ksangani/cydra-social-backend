@@ -1,1 +1,0 @@
-# cydra-socials-backend
