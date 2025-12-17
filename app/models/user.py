@@ -11,4 +11,6 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean(), default=True)
 
+    # Relationships
     workspace = relationship("Workspace", back_populates="user", uselist=False)
+    social_accounts = relationship("SocialAccount", back_populates="user", cascade="all, delete-orphan")

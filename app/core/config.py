@@ -7,6 +7,29 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     CORS_ORIGINS: str = "*"  # Can be "*", comma-separated, or JSON array
+    
+    # OAuth - Facebook/Instagram (Instagram Graph API via Facebook)
+    FACEBOOK_CLIENT_ID: str = ""
+    FACEBOOK_CLIENT_SECRET: str = ""
+    FACEBOOK_API_VERSION: str = "v24.0"
+    FACEBOOK_SCOPES: str = "public_profile,pages_show_list,business_management"
+    
+    # OAuth - Twitter/X
+    TWITTER_CLIENT_ID: str = ""
+    TWITTER_CLIENT_SECRET: str = ""
+    TWITTER_SCOPES: str = "tweet.read tweet.write users.read offline.access"
+    
+    # OAuth - LinkedIn
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+    LINKEDIN_SCOPES: str = "w_member_social r_liteprofile"
+    
+    # OAuth Configuration
+    OAUTH_REDIRECT_URI: str = "http://localhost:8000"
+    FRONTEND_URL: str = "http://localhost:3000"  # For OAuth callback redirects
+    
+    # Token Encryption
+    ENCRYPTION_KEY: str = ""  # Generate with: Fernet.generate_key().decode()
 
     class Config:
         env_file = ".env"
@@ -26,5 +49,20 @@ class Settings(BaseSettings):
         
         # Fall back to comma-separated
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+    
+    @property
+    def facebook_scopes_list(self) -> list[str]:
+        """Convert Facebook scopes to list"""
+        return [scope.strip() for scope in self.FACEBOOK_SCOPES.split(",")]
+    
+    @property
+    def twitter_scopes_list(self) -> list[str]:
+        """Convert Twitter scopes to list"""
+        return [scope.strip() for scope in self.TWITTER_SCOPES.split(" ")]
+    
+    @property
+    def linkedin_scopes_list(self) -> list[str]:
+        """Convert LinkedIn scopes to list"""
+        return [scope.strip() for scope in self.LINKEDIN_SCOPES.split(" ")]
 
 settings = Settings()
