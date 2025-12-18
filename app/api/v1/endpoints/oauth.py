@@ -51,14 +51,45 @@ async def initiate_oauth(
 @router.get("/callback/{platform}")
 async def oauth_callback(
     platform: str,
-    code: str = Query(...),
-    state: str = Query(...),
+    code: str = Query(None),
+    state: str = Query(None),
+    error: str = Query(None),
+    error_description: str = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Handle OAuth callback from social media platform.
     Exchanges code for token and saves to database.
     """
+    import urllib.parse
+    
+    # Check if OAuth provider returned an error
+    if error:
+        error_msg = error_description or error
+        
+        # Map common OAuth errors to user-friendly messages
+        if error == "access_denied" or error == "user_cancelled_authorize":
+            error_msg = f"You cancelled the {platform} authorization. Please try again if you want to connect your account."
+            error_type = "user_cancelled"
+        elif error == "unauthorized_scope_error":
+            error_msg = f"Some requested permissions are not available for your {platform} app. Please check your app configuration."
+            error_type = "scope_error"
+        else:
+            error_msg = f"{platform} authorization error: {error_msg}"
+            error_type = "oauth_error"
+        
+        encoded_message = urllib.parse.quote(error_msg)
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/oauth/error?platform={platform}&error_type={error_type}&message={encoded_message}"
+        )
+    
+    # Validate required parameters
+    if not code or not state:
+        encoded_message = urllib.parse.quote("Missing authorization code or state parameter")
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/oauth/error?platform={platform}&error_type=invalid_callback&message={encoded_message}"
+        )
+    
     # Validate state and get user_id (and code_verifier for Twitter)
     result = oauth_state_manager.validate_and_consume_state(state, platform)
     if not result:
@@ -133,12 +164,51 @@ async def oauth_callback(
     except Exception as e:
         # Log the error for debugging
         import traceback
+        import urllib.parse
+        
         print(f"OAuth callback error for {platform}:")
         print(f"Error: {str(e)}")
         print(traceback.format_exc())
         
-        # Redirect to frontend error page
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/oauth/error?platform={platform}&message={str(e)}")
+        # Categorize error and create user-friendly message
+        error_message = str(e)
+        error_type = "unknown"
+        
+        # Check for specific error types
+        if "HTTPStatusError" in str(type(e)):
+            # HTTP errors from OAuth provider
+            if "400" in str(e):
+                error_type = "invalid_request"
+                error_message = f"Invalid OAuth request to {platform}. Please try again."
+            elif "401" in str(e):
+                error_type = "unauthorized"
+                error_message = f"Authorization failed for {platform}. Please check your credentials."
+            elif "403" in str(e):
+                error_type = "forbidden"
+                error_message = f"Access forbidden by {platform}. You may need to enable required permissions in your {platform} app."
+            elif "404" in str(e):
+                error_type = "not_found"
+                error_message = f"{platform} API endpoint not found. The API may have changed."
+            else:
+                error_type = "api_error"
+                error_message = f"{platform} API error: {str(e)}"
+        elif "ENCRYPTION_KEY" in str(e):
+            error_type = "config_error"
+            error_message = "Server configuration error. Please contact support."
+        elif "database" in str(e).lower() or "sql" in str(e).lower():
+            error_type = "database_error"
+            error_message = "Failed to save account. Please try again."
+        else:
+            error_type = "unknown"
+            error_message = f"Failed to connect {platform} account: {str(e)}"
+        
+        # URL encode the error message
+        encoded_message = urllib.parse.quote(error_message)
+        
+        # Redirect to frontend error page with detailed error info
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/oauth/error?platform={platform}&error_type={error_type}&message={encoded_message}"
+        )
 
 
 @router.post("/{platform}/refresh")
