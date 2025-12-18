@@ -17,12 +17,14 @@ class Settings(BaseSettings):
     # OAuth - Twitter/X
     TWITTER_CLIENT_ID: str = ""
     TWITTER_CLIENT_SECRET: str = ""
+    TWITTER_API_VERSION: str = "2"
     TWITTER_SCOPES: str = "tweet.read tweet.write users.read offline.access"
     
     # OAuth - LinkedIn
     LINKEDIN_CLIENT_ID: str = ""
     LINKEDIN_CLIENT_SECRET: str = ""
-    LINKEDIN_SCOPES: str = "w_member_social r_liteprofile"
+    LINKEDIN_API_VERSION: str = "v2"
+    LINKEDIN_SCOPES: str = "openid profile email w_member_social"
     
     # OAuth Configuration
     OAUTH_REDIRECT_URI: str = "http://localhost:8000"

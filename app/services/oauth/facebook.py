@@ -3,22 +3,23 @@ from urllib.parse import urlencode
 from typing import Dict
 from app.services.oauth.base import BaseOAuthProvider
 from app.core.config import settings
+from app.core.oauth_constants import FacebookOAuthURLs
 
 
 class FacebookOAuthProvider(BaseOAuthProvider):
     """
-    Facebook OAuth 2.0 provider.
-    Also used for Instagram (same API, different scopes).
+    Facebook/Instagram OAuth 2.0 provider.
+    Uses Facebook Graph API for both Facebook and Instagram Business accounts.
     """
     
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         super().__init__(client_id, client_secret, redirect_uri)
-        # Use configurable API version and scopes from settings
-        self.api_version = settings.FACEBOOK_API_VERSION
+        # Use configurable scopes from settings
         self.scopes = settings.facebook_scopes_list
-        self.authorization_url = f"https://www.facebook.com/{self.api_version}/dialog/oauth"
-        self.token_url = f"https://graph.facebook.com/{self.api_version}/oauth/access_token"
-        self.user_info_url = "https://graph.facebook.com/me"
+        # Get URLs from centralized constants
+        self.authorization_url = FacebookOAuthURLs.get_authorization_url()
+        self.token_url = FacebookOAuthURLs.get_token_url()
+        self.user_info_url = FacebookOAuthURLs.get_user_info_url()
     
     def get_authorization_url(self, state: str) -> str:
         """Generate Facebook OAuth authorization URL."""

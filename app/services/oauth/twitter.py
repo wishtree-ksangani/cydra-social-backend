@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from typing import Dict
 from app.services.oauth.base import BaseOAuthProvider
 from app.core.config import settings
+from app.core.oauth_constants import TwitterOAuthURLs
 
 
 class TwitterOAuthProvider(BaseOAuthProvider):
@@ -13,14 +14,14 @@ class TwitterOAuthProvider(BaseOAuthProvider):
     Twitter/X OAuth 2.0 provider with PKCE.
     """
     
-    AUTHORIZATION_URL = "https://twitter.com/i/oauth2/authorize"
-    TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
-    USER_INFO_URL = "https://api.twitter.com/2/users/me"
-    
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         super().__init__(client_id, client_secret, redirect_uri)
         # Use configurable scopes from settings
         self.scopes = settings.twitter_scopes_list
+        # Get URLs from centralized constants
+        self.authorization_url = TwitterOAuthURLs.get_authorization_url()
+        self.token_url = TwitterOAuthURLs.get_token_url()
+        self.user_info_url = TwitterOAuthURLs.get_user_info_url()
         # Generate PKCE code verifier and challenge
         self.code_verifier = self._generate_code_verifier()
         self.code_challenge = self._generate_code_challenge(self.code_verifier)
@@ -45,7 +46,7 @@ class TwitterOAuthProvider(BaseOAuthProvider):
             "code_challenge": self.code_challenge,
             "code_challenge_method": "S256",
         }
-        return f"{self.AUTHORIZATION_URL}?{urlencode(params)}"
+        return f"{self.authorization_url}?{urlencode(params)}"
     
     async def exchange_code_for_token(self, code: str) -> Dict[str, any]:
         """Exchange authorization code for access token."""
@@ -66,7 +67,7 @@ class TwitterOAuthProvider(BaseOAuthProvider):
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                self.TOKEN_URL,
+                self.token_url,
                 data=data,
                 headers=headers,
                 auth=auth
@@ -97,7 +98,7 @@ class TwitterOAuthProvider(BaseOAuthProvider):
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                self.TOKEN_URL,
+                self.token_url,
                 data=data,
                 headers=headers,
                 auth=auth
@@ -124,7 +125,7 @@ class TwitterOAuthProvider(BaseOAuthProvider):
         
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                self.USER_INFO_URL,
+                self.user_info_url,
                 headers=headers,
                 params=params
             )

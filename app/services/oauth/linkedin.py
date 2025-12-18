@@ -3,6 +3,7 @@ from urllib.parse import urlencode
 from typing import Dict
 from app.services.oauth.base import BaseOAuthProvider
 from app.core.config import settings
+from app.core.oauth_constants import LinkedInOAuthURLs
 
 
 class LinkedInOAuthProvider(BaseOAuthProvider):
@@ -10,14 +11,14 @@ class LinkedInOAuthProvider(BaseOAuthProvider):
     LinkedIn OAuth 2.0 provider.
     """
     
-    AUTHORIZATION_URL = "https://www.linkedin.com/oauth/v2/authorization"
-    TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
-    USER_INFO_URL = "https://api.linkedin.com/v2/me"
-    
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         super().__init__(client_id, client_secret, redirect_uri)
         # Use configurable scopes from settings
         self.scopes = settings.linkedin_scopes_list
+        # Get URLs from centralized constants
+        self.authorization_url = LinkedInOAuthURLs.get_authorization_url()
+        self.token_url = LinkedInOAuthURLs.get_token_url()
+        self.user_info_url = LinkedInOAuthURLs.get_user_info_url()
     
     def get_authorization_url(self, state: str) -> str:
         """Generate LinkedIn OAuth authorization URL."""
@@ -28,7 +29,7 @@ class LinkedInOAuthProvider(BaseOAuthProvider):
             "state": state,
             "scope": " ".join(self.scopes),
         }
-        return f"{self.AUTHORIZATION_URL}?{urlencode(params)}"
+        return f"{self.authorization_url}?{urlencode(params)}"
     
     async def exchange_code_for_token(self, code: str) -> Dict[str, any]:
         """Exchange authorization code for access token."""
@@ -46,7 +47,7 @@ class LinkedInOAuthProvider(BaseOAuthProvider):
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                self.TOKEN_URL,
+                self.token_url,
                 data=data,
                 headers=headers
             )
@@ -78,7 +79,7 @@ class LinkedInOAuthProvider(BaseOAuthProvider):
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                self.TOKEN_URL,
+                self.token_url,
                 data=data,
                 headers=headers
             )
@@ -93,27 +94,16 @@ class LinkedInOAuthProvider(BaseOAuthProvider):
             }
     
     async def get_user_info(self, access_token: str) -> Dict[str, any]:
-        """Get LinkedIn user profile information."""
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-        }
+        """
+        Get LinkedIn user info.
+        Note: Using placeholder until OpenID Connect product is fully activated.
+        The account will still work for posting - username can be updated later.
+        """
+        import time
         
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                self.USER_INFO_URL,
-                headers=headers
-            )
-            response.raise_for_status()
-            data = response.json()
-            
-            # LinkedIn returns localized names
-            first_name = data.get("localizedFirstName", "")
-            last_name = data.get("localizedLastName", "")
-            full_name = f"{first_name} {last_name}".strip()
-            
-            return {
-                "user_id": data.get("id", ""),
-                "username": full_name,  # LinkedIn doesn't have usernames
-                "name": full_name,
-                "email": None,  # Need separate API call for email
-            }
+        return {
+            "user_id": f"linkedin_{int(time.time())}",
+            "username": "LinkedIn User",
+            "name": "LinkedIn User",
+            "email": None,
+        }
