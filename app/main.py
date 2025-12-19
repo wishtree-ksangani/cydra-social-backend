@@ -17,11 +17,18 @@ async def lifespan(app: FastAPI):
     try:
         await check_db_connection()
         print("Database connection successful")
+        
+        # Start post scheduler
+        from app.services.scheduler import PostScheduler
+        await PostScheduler.start()
+        
     except Exception as e:
         print(f"Database connection failed: {e}")
         raise e
     yield
-    # Shutdown (if needed)
+    # Shutdown
+    from app.services.scheduler import PostScheduler
+    await PostScheduler.stop()
 
 app = FastAPI(title="FastAPI with uv", lifespan=lifespan)
 
