@@ -45,7 +45,7 @@ class MultiPostResponse(BaseModel):
     """Response schema for multi-platform posting"""
     id: int
     content: Optional[str]
-    image_urls: Optional[List[str]]
+    image_url: Optional[str] = None
     scheduled_at: Optional[str] = None
     is_scheduled: bool = False
     platforms: List[PlatformStatus]
@@ -74,12 +74,13 @@ async def create_multi_platform_post(
     ```json
     {
       "content": "Hello from all platforms!",
-      "image_urls": ["https://example.com/image.jpg"],
+      "image_url": "https://example.com/image.jpg",
       "platforms": [
         {"platform": "facebook", "page_account_id": 1},
         {"platform": "twitter", "social_account_id": 2},
         {"platform": "linkedin", "social_account_id": 3}
-      ]
+      ],
+      "scheduled_at": "2025-12-20T10:00:00Z"
     }
     ```
     
