@@ -104,6 +104,11 @@ class LinkedInPostingService:
                 },
                 content=image_data
             )
+            
+            print(f"LinkedIn image upload status: {response.status_code}")
+            print(f"Upload URL: {upload_url}")
+            print(f"Asset URN: {asset_urn}")
+            
             response.raise_for_status()
         
         return asset_urn
@@ -160,12 +165,15 @@ class LinkedInPostingService:
         
         # Add media if uploaded
         if asset_urn:
+            print(f"Adding media to LinkedIn post: {asset_urn}")
             payload["specificContent"]["com.linkedin.ugc.ShareContent"]["media"] = [
                 {
                     "status": "READY",
                     "media": asset_urn
                 }
             ]
+        
+        print(f"LinkedIn post payload: {payload}")
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -177,6 +185,9 @@ class LinkedInPostingService:
                 },
                 json=payload
             )
+            
+            print(f"LinkedIn post response status: {response.status_code}")
+            print(f"LinkedIn post response: {response.text}")
             
             # Handle errors
             if response.status_code != 201:
