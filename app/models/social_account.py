@@ -21,6 +21,7 @@ class SocialAccount(Base):
     
     # Relationships
     user = relationship("User", back_populates="social_accounts")
+    page_accounts = relationship("PageAccount", back_populates="social_account", cascade="all, delete-orphan")
     
     # Constraints
     __table_args__ = (

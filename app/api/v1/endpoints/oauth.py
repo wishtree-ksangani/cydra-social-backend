@@ -158,6 +158,59 @@ async def oauth_callback(
         
         await db.commit()
         
+        # For Facebook: Exchange for long-lived token and fetch pages
+        if platform.lower() == "facebook":
+            try:
+                # Exchange for long-lived token (60 days)
+                long_lived_token_data = await provider.exchange_for_long_lived_token(
+                    token_data["access_token"]
+                )
+                
+                # Update with long-lived token
+                if existing_account:
+                    existing_account.access_token = encrypt_token(long_lived_token_data["access_token"])
+                    existing_account.token_expires_at = datetime.utcnow() + timedelta(
+                        seconds=long_lived_token_data.get("expires_in", 5184000)
+                    )
+                else:
+                    # Update the newly created account
+                    result = await db.execute(
+                        select(SocialAccount).where(
+                            SocialAccount.user_id == user_id,
+                            SocialAccount.platform == platform
+                        )
+                    )
+                    account = result.scalars().first()
+                    if account:
+                        account.access_token = encrypt_token(long_lived_token_data["access_token"])
+                        account.token_expires_at = datetime.utcnow() + timedelta(
+                            seconds=long_lived_token_data.get("expires_in", 5184000)
+                        )
+                
+                await db.commit()
+                
+                # Auto-fetch Facebook Pages and Instagram accounts
+                from app.services.facebook import FacebookPagesService
+                
+                # Get the social account ID
+                result = await db.execute(
+                    select(SocialAccount).where(
+                        SocialAccount.user_id == user_id,
+                        SocialAccount.platform == platform
+                    )
+                )
+                social_account = result.scalars().first()
+                
+                if social_account:
+                    await FacebookPagesService.fetch_and_save_pages(
+                        db=db,
+                        social_account_id=social_account.id,
+                        user_access_token=long_lived_token_data["access_token"]
+                    )
+            except Exception as e:
+                # Log error but don't fail the OAuth flow
+                print(f"Error fetching pages: {str(e)}")
+        
         # Redirect to frontend success page
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/oauth/success?platform={platform}")
         

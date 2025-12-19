@@ -53,6 +53,34 @@ class FacebookOAuthProvider(BaseOAuthProvider):
                 "refresh_token": None,  # Facebook uses long-lived tokens
             }
     
+    async def exchange_for_long_lived_token(self, short_lived_token: str) -> Dict[str, any]:
+        """
+        Exchange short-lived user token for long-lived token (60 days).
+        
+        Args:
+            short_lived_token: Short-lived access token from OAuth
+            
+        Returns:
+            Long-lived token data with 60-day expiration
+        """
+        params = {
+            "grant_type": "fb_exchange_token",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "fb_exchange_token": short_lived_token,
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(self.token_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            return {
+                "access_token": data["access_token"],
+                "token_type": data.get("token_type", "bearer"),
+                "expires_in": data.get("expires_in", 5184000),  # 60 days default
+            }
+    
     async def refresh_access_token(self, refresh_token: str) -> Dict[str, any]:
         """
         Facebook doesn't use refresh tokens.
