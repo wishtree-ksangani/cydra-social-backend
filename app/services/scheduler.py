@@ -41,14 +41,16 @@ class PostScheduler:
     @classmethod
     async def _run(cls):
         """Main scheduler loop"""
+        from app.core.config import settings
+        
         while cls._running:
             try:
                 await cls._process_scheduled_posts()
             except Exception as e:
                 print(f"❌ Scheduler error: {e}")
             
-            # Check every 30 seconds
-            await asyncio.sleep(30)
+            # Check at configured interval
+            await asyncio.sleep(settings.SCHEDULER_INTERVAL_SECONDS)
     
     @classmethod
     async def _process_scheduled_posts(cls):

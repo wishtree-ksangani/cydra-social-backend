@@ -54,7 +54,9 @@ async def post_to_facebook(
     - **content**: Post text (optional)
     - **image_url**: Image URL (optional)
     """
-    # Get page account
+    from app.services.posting.multi_platform import MultiPlatformPostingService
+    
+    # Verify page ownership
     result = await db.execute(
         select(PageAccount).where(PageAccount.id == request.page_account_id)
     )
@@ -63,7 +65,6 @@ async def post_to_facebook(
     if not page_account:
         raise HTTPException(status_code=404, detail="Page not found")
     
-    # Verify ownership
     result = await db.execute(
         select(SocialAccount).where(
             SocialAccount.id == page_account.social_account_id,
@@ -73,23 +74,31 @@ async def post_to_facebook(
     if not result.scalars().first():
         raise HTTPException(status_code=403, detail="Access denied")
     
-    # Decrypt token
-    page_token = decrypt_token(page_account.page_access_token)
-    
     try:
-        result = await FacebookPostingService.post_to_page(
-            page_id=page_account.page_id,
-            page_access_token=page_token,
-            message=request.content or "",
-            image_url=request.image_url
+        # Use multi-platform service for status tracking
+        post = await MultiPlatformPostingService.create_multi_platform_post(
+            db=db,
+            user_id=current_user.id,
+            content=request.content,
+            image_url=request.image_url,
+            platforms=[{"platform": "facebook", "page_account_id": request.page_account_id}],
+            scheduled_at=None  # Immediate posting
         )
         
+        # Wait a moment for processing to start
+        import asyncio
+        await asyncio.sleep(0.5)
+        
+        # Get status
+        status = await MultiPlatformPostingService.get_post_status(db, post.id, current_user.id)
+        platform_status = status["platforms"][0]
+        
         return PostResponse(
-            success=True,
-            post_id=result["post_id"],
+            success=platform_status["status"] in ["completed", "in_progress"],
+            post_id=platform_status.get("post_id") or str(post.id),
             platform="facebook",
-            platform_url=result["platform_url"],
-            account_name=page_account.page_name
+            platform_url=platform_status.get("platform_url") or "",
+            account_name=platform_status["account_name"]
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -117,7 +126,9 @@ async def post_to_instagram(
     - **image_url**: Image URL (REQUIRED)
     - **caption**: Post caption (optional)
     """
-    # Get page account
+    from app.services.posting.multi_platform import MultiPlatformPostingService
+    
+    # Verify page ownership and Instagram link
     result = await db.execute(
         select(PageAccount).where(PageAccount.id == request.page_account_id)
     )
@@ -132,7 +143,6 @@ async def post_to_instagram(
             detail="This page doesn't have an Instagram account linked"
         )
     
-    # Verify ownership
     result = await db.execute(
         select(SocialAccount).where(
             SocialAccount.id == page_account.social_account_id,
@@ -142,23 +152,29 @@ async def post_to_instagram(
     if not result.scalars().first():
         raise HTTPException(status_code=403, detail="Access denied")
     
-    # Decrypt token
-    page_token = decrypt_token(page_account.page_access_token)
-    
     try:
-        result = await InstagramPostingService.post_image(
-            instagram_account_id=page_account.instagram_account_id,
-            page_access_token=page_token,
+        # Use multi-platform service for status tracking
+        post = await MultiPlatformPostingService.create_multi_platform_post(
+            db=db,
+            user_id=current_user.id,
+            content=request.caption,
             image_url=request.image_url,
-            caption=request.caption or ""
+            platforms=[{"platform": "instagram", "page_account_id": request.page_account_id}],
+            scheduled_at=None
         )
         
+        import asyncio
+        await asyncio.sleep(0.5)
+        
+        status = await MultiPlatformPostingService.get_post_status(db, post.id, current_user.id)
+        platform_status = status["platforms"][0]
+        
         return PostResponse(
-            success=True,
-            post_id=result["post_id"],
+            success=platform_status["status"] in ["completed", "in_progress"],
+            post_id=platform_status.get("post_id") or str(post.id),
             platform="instagram",
-            platform_url=result["platform_url"],
-            account_name=page_account.page_name
+            platform_url=platform_status.get("platform_url") or "",
+            account_name=platform_status["account_name"]
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -186,7 +202,9 @@ async def post_to_twitter(
     - **content**: Tweet text (REQUIRED, max 280 characters)
     - **image_urls**: List of image URLs (optional, max 4)
     """
-    # Get social account
+    from app.services.posting.multi_platform import MultiPlatformPostingService
+    
+    # Verify account ownership
     result = await db.execute(
         select(SocialAccount).where(
             SocialAccount.id == request.social_account_id,
@@ -202,22 +220,32 @@ async def post_to_twitter(
     if not social_account.is_active:
         raise HTTPException(status_code=400, detail="Account is disconnected")
     
-    # Refresh token if needed
-    access_token = await TokenRefreshService.refresh_if_needed(db, social_account)
-    
     try:
-        result = await TwitterPostingService.post_tweet(
-            access_token=access_token,
-            text=request.content,
-            image_urls=request.image_urls
+        # Use first image only (multi-platform uses single image_url)
+        image_url = request.image_urls[0] if request.image_urls else None
+        
+        # Use multi-platform service for status tracking
+        post = await MultiPlatformPostingService.create_multi_platform_post(
+            db=db,
+            user_id=current_user.id,
+            content=request.content,
+            image_url=image_url,
+            platforms=[{"platform": "twitter", "social_account_id": request.social_account_id}],
+            scheduled_at=None
         )
         
+        import asyncio
+        await asyncio.sleep(0.5)
+        
+        status = await MultiPlatformPostingService.get_post_status(db, post.id, current_user.id)
+        platform_status = status["platforms"][0]
+        
         return PostResponse(
-            success=True,
-            post_id=result["post_id"],
+            success=platform_status["status"] in ["completed", "in_progress"],
+            post_id=platform_status.get("post_id") or str(post.id),
             platform="twitter",
-            platform_url=result["platform_url"],
-            account_name=social_account.platform_username
+            platform_url=platform_status.get("platform_url") or "",
+            account_name=platform_status["account_name"]
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -245,7 +273,9 @@ async def post_to_linkedin(
     - **content**: Post text (REQUIRED, max 3000 characters)
     - **image_url**: Image URL (optional, single image)
     """
-    # Get social account
+    from app.services.posting.multi_platform import MultiPlatformPostingService
+    
+    # Verify account ownership
     result = await db.execute(
         select(SocialAccount).where(
             SocialAccount.id == request.social_account_id,
@@ -261,22 +291,29 @@ async def post_to_linkedin(
     if not social_account.is_active:
         raise HTTPException(status_code=400, detail="Account is disconnected")
     
-    # Decrypt token
-    access_token = decrypt_token(social_account.access_token)
-    
     try:
-        result = await LinkedInPostingService.create_post(
-            access_token=access_token,
-            text=request.content,
-            image_url=request.image_url
+        # Use multi-platform service for status tracking
+        post = await MultiPlatformPostingService.create_multi_platform_post(
+            db=db,
+            user_id=current_user.id,
+            content=request.content,
+            image_url=request.image_url,
+            platforms=[{"platform": "linkedin", "social_account_id": request.social_account_id}],
+            scheduled_at=None
         )
         
+        import asyncio
+        await asyncio.sleep(0.5)
+        
+        status = await MultiPlatformPostingService.get_post_status(db, post.id, current_user.id)
+        platform_status = status["platforms"][0]
+        
         return PostResponse(
-            success=True,
-            post_id=result["post_id"],
+            success=platform_status["status"] in ["completed", "in_progress"],
+            post_id=platform_status.get("post_id") or str(post.id),
             platform="linkedin",
-            platform_url=result["platform_url"],
-            account_name=social_account.platform_username
+            platform_url=platform_status.get("platform_url") or "",
+            account_name=platform_status["account_name"]
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

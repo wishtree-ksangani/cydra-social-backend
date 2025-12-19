@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     
     # Token Encryption
     ENCRYPTION_KEY: str = ""  # Generate with: Fernet.generate_key().decode()
+    
+    # Scheduler Configuration
+    SCHEDULER_INTERVAL_SECONDS: int = 30  # How often to check for scheduled posts
 
     class Config:
         env_file = ".env"
