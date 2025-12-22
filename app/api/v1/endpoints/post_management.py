@@ -33,10 +33,11 @@ class PostListItem(BaseModel):
 
 
 class PostStats(BaseModel):
-    """User post statistics"""
+    """User post statistics - counts unique posts by status"""
     total_posts: int
+    draft_posts: int
     scheduled_posts: int
-    completed_posts: int
+    published_posts: int
     failed_posts: int
     posts_today: int
     posts_this_week: int
@@ -375,13 +376,22 @@ async def get_post_stats(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get overall post statistics for the current user."""
+    """Get overall post statistics for the current user (counts unique posts by status)."""
     
     # Total posts
     total_result = await db.execute(
         select(func.count(Post.id)).where(Post.user_id == current_user.id)
     )
     total_posts = total_result.scalar()
+    
+    # Draft posts
+    draft_result = await db.execute(
+        select(func.count(Post.id)).where(
+            Post.user_id == current_user.id,
+            Post.status == "draft"
+        )
+    )
+    draft_posts = draft_result.scalar()
     
     # Scheduled posts
     scheduled_result = await db.execute(
@@ -392,14 +402,23 @@ async def get_post_stats(
     )
     scheduled_posts = scheduled_result.scalar()
     
-    # Get platform stats
-    platform_result = await db.execute(
-        select(PostPlatform).join(Post).where(Post.user_id == current_user.id)
+    # Published posts
+    published_result = await db.execute(
+        select(func.count(Post.id)).where(
+            Post.user_id == current_user.id,
+            Post.status == "published"
+        )
     )
-    platforms = platform_result.scalars().all()
+    published_posts = published_result.scalar()
     
-    completed = sum(1 for p in platforms if p.status == PostStatus.COMPLETED)
-    failed = sum(1 for p in platforms if p.status == PostStatus.FAILED)
+    # Failed posts
+    failed_result = await db.execute(
+        select(func.count(Post.id)).where(
+            Post.user_id == current_user.id,
+            Post.status == "failed"
+        )
+    )
+    failed_posts = failed_result.scalar()
     
     # Time-based stats
     now = datetime.utcnow()
@@ -436,9 +455,10 @@ async def get_post_stats(
     
     return PostStats(
         total_posts=total_posts,
+        draft_posts=draft_posts,
         scheduled_posts=scheduled_posts,
-        completed_posts=completed,
-        failed_posts=failed,
+        published_posts=published_posts,
+        failed_posts=failed_posts,
         posts_today=posts_today,
         posts_this_week=posts_this_week,
         posts_this_month=posts_this_month
@@ -454,7 +474,9 @@ async def get_platform_stats(
     
     # Get all platform entries for user's posts
     result = await db.execute(
-        select(PostPlatform).join(Post).where(Post.user_id == current_user.id)
+        select(PostPlatform)
+        .join(Post, PostPlatform.post_id == Post.id)
+        .where(Post.user_id == current_user.id)
     )
     platforms = result.scalars().all()
     
