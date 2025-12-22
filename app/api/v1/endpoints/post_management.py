@@ -194,6 +194,9 @@ async def update_post(
         try:
             scheduled_at = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
             post.scheduled_at = scheduled_at
+            # Auto-change draft to scheduled when scheduled_at is set
+            if post.status == "draft":
+                post.status = "scheduled"
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid scheduled_at format")
     
