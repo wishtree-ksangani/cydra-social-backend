@@ -69,11 +69,17 @@ class MultiPlatformPostingService:
                 db, platform, platform_config
             )
             
+            # Get platform-specific content (overrides global if provided)
+            platform_content = platform_config.get("content")
+            platform_image_url = platform_config.get("image_url")
+            
             post_platform = PostPlatform(
                 post_id=post.id,
                 platform=platform,
                 account_id=platform_config.get("page_account_id") or platform_config.get("social_account_id"),
                 account_name=account_name,
+                platform_content=platform_content,  # Store platform-specific content
+                platform_image_url=platform_image_url,  # Store platform-specific image
                 status=PostStatus.QUEUED
             )
             db.add(post_platform)
@@ -153,24 +159,28 @@ class MultiPlatformPostingService:
             post_platform.started_at = datetime.now(timezone.utc)
             await db.commit()
             
+            # Use platform-specific content if available, otherwise use global
+            final_content = post_platform.platform_content if post_platform.platform_content is not None else content
+            final_image_url = post_platform.platform_image_url if post_platform.platform_image_url is not None else image_url
+            
             result = None
             
             # Post based on platform
             if platform == "facebook":
                 result = await MultiPlatformPostingService._post_facebook(
-                    db, platform_config, content, image_url
+                    db, platform_config, final_content, final_image_url
                 )
             elif platform == "instagram":
                 result = await MultiPlatformPostingService._post_instagram(
-                    db, platform_config, content, image_url
+                    db, platform_config, final_content, final_image_url
                 )
             elif platform == "twitter":
                 result = await MultiPlatformPostingService._post_twitter(
-                    db, platform_config, content, image_url
+                    db, platform_config, final_content, final_image_url
                 )
             elif platform == "linkedin":
                 result = await MultiPlatformPostingService._post_linkedin(
-                    db, platform_config, content, image_url
+                    db, platform_config, final_content, final_image_url
                 )
             
             # Update success

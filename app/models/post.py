@@ -56,6 +56,10 @@ class PostPlatform(Base):
     account_id = Column(Integer, nullable=False)  # page_account_id or social_account_id
     account_name = Column(String(255), nullable=True)
     
+    # Platform-specific content (overrides post.content and post.image_url if set)
+    platform_content = Column(Text, nullable=True)  # Platform-specific content
+    platform_image_url = Column(String(500), nullable=True)  # Platform-specific image
+    
     # Status tracking
     status = Column(SQLEnum(PostStatus), default=PostStatus.QUEUED, nullable=False)
     

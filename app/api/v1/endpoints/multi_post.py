@@ -18,12 +18,14 @@ class PlatformConfig(BaseModel):
     platform: str  # facebook, instagram, twitter, linkedin
     page_account_id: Optional[int] = None  # For Facebook/Instagram
     social_account_id: Optional[int] = None  # For Twitter/LinkedIn
+    content: Optional[str] = None  # Platform-specific content (overrides global)
+    image_url: Optional[str] = None  # Platform-specific image (overrides global)
 
 
 class MultiPostRequest(BaseModel):
     """Request schema for multi-platform posting"""
-    content: Optional[str] = None
-    image_url: Optional[str] = None  # Single image URL
+    content: Optional[str] = None  # Global content (optional if platform-specific provided)
+    image_url: Optional[str] = None  # Global image (optional if platform-specific provided)
     platforms: List[PlatformConfig]
     scheduled_at: Optional[str] = None  # ISO 8601 datetime string
 
