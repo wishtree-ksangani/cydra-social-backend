@@ -23,8 +23,8 @@ class PostListItem(BaseModel):
     id: int
     content: Optional[str]
     image_url: Optional[str]
+    status: str  # draft | scheduled | publishing | published | failed
     scheduled_at: Optional[str]
-    is_scheduled: bool
     created_at: str
     platform_count: int
     completed_count: int
@@ -83,8 +83,10 @@ async def list_posts(
     query = select(Post).where(Post.user_id == current_user.id)
     
     # Apply filters
-    if status == "scheduled":
-        query = query.where(Post.is_scheduled == 1)
+    if status == "draft":
+        query = query.where(Post.status == "draft")
+    elif status == "scheduled":
+        query = query.where(Post.status == "scheduled")
     
     # Order by created_at descending
     query = query.order_by(Post.created_at.desc()).limit(limit).offset(offset)
@@ -125,8 +127,8 @@ async def list_posts(
             id=post.id,
             content=post.content,
             image_url=post.image_url,
+            status=post.status,
             scheduled_at=post.scheduled_at.isoformat() if post.scheduled_at else None,
-            is_scheduled=bool(post.is_scheduled),
             created_at=post.created_at.isoformat(),
             platform_count=len(platforms),
             completed_count=completed,
@@ -177,7 +179,7 @@ async def update_post(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    if not post.is_scheduled:
+    if post.status not in ["draft", "scheduled"]:
         raise HTTPException(status_code=400, detail="Cannot update post that has already been processed")
     
     # Update fields
@@ -222,7 +224,7 @@ async def delete_post(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    if not post.is_scheduled:
+    if post.status not in ["draft", "scheduled"]:
         raise HTTPException(
             status_code=400,
             detail="Cannot delete post that has already been processed. Use platform APIs to delete published posts."
@@ -262,14 +264,108 @@ async def cancel_scheduled_post(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    if not post.is_scheduled:
+    if post.status != "scheduled":
         raise HTTPException(status_code=400, detail="Post is not scheduled")
     
-    # Mark as not scheduled
-    post.is_scheduled = 0
+    # Mark as cancelled (draft)
+    post.status = "draft"
+    post.scheduled_at = None
     await db.commit()
     
     return {"success": True, "message": "Scheduled post cancelled"}
+
+
+# ==================== Publish Draft ====================
+
+class PublishRequest(BaseModel):
+    """Publish draft request"""
+    mode: str  # "immediate" | "schedule"
+    scheduled_at: Optional[str] = None  # Required if mode="schedule"
+
+
+@router.post("/{post_id}/publish")
+async def publish_draft(
+    post_id: int,
+    request: PublishRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Publish a draft post.
+    
+    **Modes:**
+    - `immediate`: Post now to all platforms
+    - `schedule`: Schedule for later (requires scheduled_at)
+    """
+    # Get post
+    result = await db.execute(
+        select(Post).where(Post.id == post_id, Post.user_id == current_user.id)
+    )
+    post = result.scalars().first()
+    
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    if post.status not in ["draft"]:
+        raise HTTPException(status_code=400, detail="Only draft posts can be published")
+    
+    if request.mode == "schedule":
+        if not request.scheduled_at:
+            raise HTTPException(status_code=400, detail="scheduled_at is required for schedule mode")
+        
+        try:
+            scheduled_at = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
+            post.scheduled_at = scheduled_at
+            post.status = "scheduled"
+            await db.commit()
+            return {"success": True, "message": "Post scheduled", "scheduled_at": scheduled_at.isoformat()}
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at format")
+    
+    elif request.mode == "immediate":
+        # Get platform entries
+        platform_result = await db.execute(
+            select(PostPlatform).where(PostPlatform.post_id == post_id)
+        )
+        platforms = platform_result.scalars().all()
+        
+        if not platforms:
+            raise HTTPException(status_code=400, detail="No platforms configured for this post")
+        
+        # Build platform configs
+        platform_configs = []
+        for p in platforms:
+            if p.platform in ["facebook", "instagram"]:
+                platform_configs.append({
+                    "platform": p.platform,
+                    "page_account_id": p.account_id
+                })
+            else:
+                platform_configs.append({
+                    "platform": p.platform,
+                    "social_account_id": p.account_id
+                })
+        
+        # Update status to publishing
+        post.status = "publishing"
+        await db.commit()
+        
+        # Start posting
+        import asyncio
+        asyncio.create_task(
+            MultiPlatformPostingService._process_platforms(
+                post.id,
+                platforms,
+                post.content,
+                post.image_url,
+                platform_configs
+            )
+        )
+        
+        return {"success": True, "message": "Post is being published"}
+    
+    else:
+        raise HTTPException(status_code=400, detail="Invalid mode. Use 'immediate' or 'schedule'")
 
 
 # ==================== User Statistics ====================
@@ -291,7 +387,7 @@ async def get_post_stats(
     scheduled_result = await db.execute(
         select(func.count(Post.id)).where(
             Post.user_id == current_user.id,
-            Post.is_scheduled == 1
+            Post.status == "scheduled"
         )
     )
     scheduled_posts = scheduled_result.scalar()

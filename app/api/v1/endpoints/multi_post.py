@@ -27,7 +27,8 @@ class MultiPostRequest(BaseModel):
     content: Optional[str] = None  # Global content (optional if platform-specific provided)
     image_url: Optional[str] = None  # Global image (optional if platform-specific provided)
     platforms: List[PlatformConfig]
-    scheduled_at: Optional[str] = None  # ISO 8601 datetime string
+    status: Optional[str] = "immediate"  # "draft" | "scheduled" | "immediate"
+    scheduled_at: Optional[str] = None  # ISO 8601 datetime string (required if status="scheduled")
 
 
 class PlatformStatus(BaseModel):
@@ -48,8 +49,8 @@ class MultiPostResponse(BaseModel):
     id: int
     content: Optional[str]
     image_url: Optional[str] = None
+    status: str = "draft"  # draft | scheduled | publishing | published | failed
     scheduled_at: Optional[str] = None
-    is_scheduled: bool = False
     platforms: List[PlatformStatus]
     created_at: str
 
@@ -120,9 +121,22 @@ async def create_multi_platform_post(
             )
     
     try:
+        # Validate status
+        valid_statuses = ["draft", "scheduled", "immediate"]
+        if request.status not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Must be one of: {valid_statuses}"
+            )
+        
         # Parse scheduled_at if provided
         scheduled_at = None
-        if request.scheduled_at:
+        if request.status == "scheduled":
+            if not request.scheduled_at:
+                raise HTTPException(
+                    status_code=400,
+                    detail="scheduled_at is required when status is 'scheduled'"
+                )
             from datetime import datetime
             try:
                 scheduled_at = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
@@ -139,6 +153,7 @@ async def create_multi_platform_post(
             content=request.content,
             image_url=request.image_url,
             platforms=[p.dict() for p in request.platforms],
+            status=request.status,
             scheduled_at=scheduled_at
         )
         

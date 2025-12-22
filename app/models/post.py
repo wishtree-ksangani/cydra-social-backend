@@ -31,9 +31,11 @@ class Post(Base):
     content = Column(Text, nullable=True)
     image_url = Column(String(500), nullable=True)  # Single image URL
     
+    # Status: draft | scheduled | publishing | published | failed
+    status = Column(String(50), default="draft", nullable=False)
+    
     # Scheduling
-    scheduled_at = Column(DateTime(timezone=True), nullable=True)  # When to post (NULL = immediate)
-    is_scheduled = Column(Integer, default=0)  # 0 = immediate, 1 = scheduled
+    scheduled_at = Column(DateTime(timezone=True), nullable=True)  # When to post
     
     # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -62,7 +62,7 @@ class PostScheduler:
                 
                 result = await db.execute(
                     select(Post).where(
-                        Post.is_scheduled == 1,
+                        Post.status == "scheduled",
                         Post.scheduled_at <= now
                     )
                 )
@@ -81,8 +81,8 @@ class PostScheduler:
                     platforms = result.scalars().all()
                     
                     if not platforms:
-                        # Mark as processed
-                        post.is_scheduled = 0
+                        # Mark as published (no platforms to process)
+                        post.status = "published"
                         await db.commit()
                         continue
                     
@@ -101,6 +101,9 @@ class PostScheduler:
                             })
                     
                     # Process platforms
+                    post.status = "publishing"
+                    await db.commit()
+                    
                     await MultiPlatformPostingService._process_platforms(
                         post.id,
                         platforms,
@@ -109,8 +112,8 @@ class PostScheduler:
                         platform_configs
                     )
                     
-                    # Mark as processed
-                    post.is_scheduled = 0
+                    # Mark as published
+                    post.status = "published"
                     await db.commit()
                     
                     print(f"✅ Scheduled post {post.id} processed")

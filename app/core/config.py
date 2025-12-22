@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     
     # Scheduler Configuration
     SCHEDULER_INTERVAL_SECONDS: int = 30  # How often to check for scheduled posts
+    
+    # AI Content Generation (n8n webhooks)
+    N8N_HOST_URL: str = ""  # n8n host URL (e.g., https://your-n8n-instance.com)
+    N8N_CONTENT_WEBHOOK_PATH: str = ""  # Webhook path for content generation (e.g., /webhook/generate-content)
+    N8N_IMAGE_WEBHOOK_PATH: str = ""  # Webhook path for image generation (e.g., /webhook/generate-image)
 
     class Config:
         env_file = ".env"

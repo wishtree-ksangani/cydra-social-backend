@@ -29,6 +29,7 @@ class MultiPlatformPostingService:
         content: Optional[str],
         image_url: Optional[str],
         platforms: List[Dict[str, any]],
+        status: str = "draft",
         scheduled_at: Optional[datetime] = None
     ) -> Post:
         """
@@ -40,21 +41,19 @@ class MultiPlatformPostingService:
             content: Post content/text
             image_url: Single image URL
             platforms: List of platform configs
-            scheduled_at: When to post (None = immediate)
+            status: Post status - "draft" | "scheduled" | "publishing"
+            scheduled_at: When to post (required if status="scheduled")
         
         Returns:
             Post object with platform statuses
         """
-        # Determine if scheduled
-        is_scheduled = 1 if scheduled_at else 0
-        
         # Create main post record
         post = Post(
             user_id=user_id,
             content=content,
             image_url=image_url,
-            scheduled_at=scheduled_at,
-            is_scheduled=is_scheduled
+            status=status,
+            scheduled_at=scheduled_at
         )
         db.add(post)
         await db.flush()  # Get post.id
@@ -87,8 +86,12 @@ class MultiPlatformPostingService:
         
         await db.commit()
         
-        # If immediate, start posting now
-        if not is_scheduled:
+        # If immediate (publishing), start posting now
+        if status == "immediate" or status == "publishing":
+            # Update status to publishing
+            post.status = "publishing"
+            await db.commit()
+            
             asyncio.create_task(
                 MultiPlatformPostingService._process_platforms(
                     post.id, platform_entries, content, image_url, platforms
@@ -131,16 +134,44 @@ class MultiPlatformPostingService:
         from app.core.database import get_db
         
         async for db in get_db():
+            # Re-fetch platform entries in this session to avoid detached object issues
+            result = await db.execute(
+                select(PostPlatform).where(PostPlatform.post_id == post_id)
+            )
+            fresh_platform_entries = result.scalars().all()
+            
+            # Build a map of platform to config
+            platform_config_map = {p.get("platform"): p for p in platforms}
+            
             tasks = []
-            for i, platform_entry in enumerate(platform_entries):
+            for platform_entry in fresh_platform_entries:
+                config = platform_config_map.get(platform_entry.platform, {})
+                if not config:
+                    # Try to find by account_id
+                    for p in platforms:
+                        if p.get("social_account_id") == platform_entry.account_id or p.get("page_account_id") == platform_entry.account_id:
+                            config = p
+                            break
+                
                 task = MultiPlatformPostingService._post_to_platform(
-                    db, platform_entry, content, image_url, platforms[i]
+                    db, platform_entry, content, image_url, config
                 )
                 tasks.append(task)
             
             # Post to all platforms concurrently
             await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Update post status to published after all platforms are processed
+            post_result = await db.execute(
+                select(Post).where(Post.id == post_id)
+            )
+            post = post_result.scalars().first()
+            if post:
+                post.status = "published"
+                await db.commit()
+            
             break
+
     
     @staticmethod
     async def _post_to_platform(
@@ -317,8 +348,8 @@ class MultiPlatformPostingService:
             "id": post.id,
             "content": post.content,
             "image_url": post.image_url,
+            "status": post.status,
             "scheduled_at": post.scheduled_at.isoformat() if post.scheduled_at else None,
-            "is_scheduled": bool(post.is_scheduled),
             "created_at": post.created_at.isoformat() if post.created_at else None,
             "platforms": [
                 {
