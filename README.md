@@ -1,6 +1,6 @@
 # Cydra Socials Backend
 
-FastAPI backend for Cydra Socials application with JWT authentication, PostgreSQL database, and comprehensive user/workspace management.
+FastAPI backend for Cydra Socials application with JWT authentication, PostgreSQL database, multi-platform social media posting, and AI-powered content generation.
 
 ## Features
 
@@ -11,6 +11,11 @@ FastAPI backend for Cydra Socials application with JWT authentication, PostgreSQ
 - 🔒 **Password Security** - Bcrypt password hashing
 - 🌐 **CORS Support** - Configurable cross-origin resource sharing
 - 📝 **API Documentation** - Auto-generated Swagger/ReDoc docs
+- 🤖 **AI Content Generation** - n8n webhook integration for AI-powered content
+- 📱 **Multi-Platform Posting** - Post to Facebook, Instagram, Twitter, LinkedIn
+- 📅 **Draft & Scheduling** - Save drafts, schedule posts, or publish immediately
+- 📊 **Analytics** - Post statistics by status and platform
+
 
 ## Tech Stack
 
@@ -140,6 +145,27 @@ cydra-socials-backend/
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `SECRET_KEY` | JWT signing key (change in production!) |
+| `ENCRYPTION_KEY` | Token encryption key (generate with Fernet) |
+
+### Social Platform OAuth
+
+| Variable | Description |
+|----------|-------------|
+| `FACEBOOK_CLIENT_ID` | Facebook App Client ID |
+| `FACEBOOK_CLIENT_SECRET` | Facebook App Secret |
+| `TWITTER_CLIENT_ID` | Twitter API Client ID |
+| `TWITTER_CLIENT_SECRET` | Twitter API Client Secret |
+| `LINKEDIN_CLIENT_ID` | LinkedIn App Client ID |
+| `LINKEDIN_CLIENT_SECRET` | LinkedIn App Secret |
+| `OAUTH_REDIRECT_URL` | OAuth callback URL |
+
+### AI Content Generation (n8n)
+
+| Variable | Description |
+|----------|-------------|
+| `N8N_HOST_URL` | n8n instance URL (e.g., https://n8n.example.com) |
+| `N8N_CONTENT_WEBHOOK_PATH` | Webhook path for content generation |
+| `N8N_IMAGE_WEBHOOK_PATH` | Webhook path for image generation |
 
 ### Optional Variables
 
@@ -148,6 +174,8 @@ cydra-socials-backend/
 | `ALGORITHM` | HS256 | JWT algorithm |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | 30 | Token expiration time |
 | `CORS_ORIGINS` | * | Allowed CORS origins |
+| `SCHEDULER_INTERVAL_SECONDS` | 30 | Post scheduler interval |
+
 
 ### CORS Configuration
 
@@ -195,7 +223,3 @@ sudo systemctl stop postgresql
 uv run alembic current
 uv run alembic history
 ```
-
-## License
-
-[Your License Here]
