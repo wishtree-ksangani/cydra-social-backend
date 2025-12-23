@@ -143,7 +143,7 @@ class MultiPlatformPostingService:
             # Build a map of platform to config
             platform_config_map = {p.get("platform"): p for p in platforms}
             
-            tasks = []
+            # Process platforms SEQUENTIALLY to avoid session concurrency issues
             for platform_entry in fresh_platform_entries:
                 config = platform_config_map.get(platform_entry.platform, {})
                 if not config:
@@ -153,13 +153,10 @@ class MultiPlatformPostingService:
                             config = p
                             break
                 
-                task = MultiPlatformPostingService._post_to_platform(
+                # Process each platform one at a time
+                await MultiPlatformPostingService._post_to_platform(
                     db, platform_entry, content, image_url, config
                 )
-                tasks.append(task)
-            
-            # Post to all platforms concurrently
-            await asyncio.gather(*tasks, return_exceptions=True)
             
             # Update post status to published after all platforms are processed
             post_result = await db.execute(
@@ -171,6 +168,7 @@ class MultiPlatformPostingService:
                 await db.commit()
             
             break
+
 
     
     @staticmethod
