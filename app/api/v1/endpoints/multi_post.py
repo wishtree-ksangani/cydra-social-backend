@@ -24,6 +24,9 @@ class PlatformConfig(BaseModel):
 
 class MultiPostRequest(BaseModel):
     """Request schema for multi-platform posting"""
+    topic: Optional[str] = None  # Original topic for content generation
+    tone: Optional[str] = None  # Tone used for generation
+    hashtag: Optional[str] = None  # Hashtags provided
     content: Optional[str] = None  # Global content (optional if platform-specific provided)
     image_url: Optional[str] = None  # Global image (optional if platform-specific provided)
     platforms: List[PlatformConfig]
@@ -47,6 +50,9 @@ class PlatformStatus(BaseModel):
 class MultiPostResponse(BaseModel):
     """Response schema for multi-platform posting"""
     id: int
+    topic: Optional[str] = None
+    tone: Optional[str] = None
+    hashtag: Optional[str] = None
     content: Optional[str]
     image_url: Optional[str] = None
     status: str = "draft"  # draft | scheduled | publishing | published | failed
@@ -150,6 +156,9 @@ async def create_multi_platform_post(
         post = await MultiPlatformPostingService.create_multi_platform_post(
             db=db,
             user_id=current_user.id,
+            topic=request.topic,
+            tone=request.tone,
+            hashtag=request.hashtag,
             content=request.content,
             image_url=request.image_url,
             platforms=[p.dict() for p in request.platforms],

@@ -30,7 +30,10 @@ class MultiPlatformPostingService:
         image_url: Optional[str],
         platforms: List[Dict[str, any]],
         status: str = "draft",
-        scheduled_at: Optional[datetime] = None
+        scheduled_at: Optional[datetime] = None,
+        topic: Optional[str] = None,
+        tone: Optional[str] = None,
+        hashtag: Optional[str] = None
     ) -> Post:
         """
         Create a post across multiple platforms.
@@ -43,6 +46,9 @@ class MultiPlatformPostingService:
             platforms: List of platform configs
             status: Post status - "draft" | "scheduled" | "publishing"
             scheduled_at: When to post (required if status="scheduled")
+            topic: Original topic for content generation
+            tone: Tone used for generation
+            hashtag: Hashtags provided
         
         Returns:
             Post object with platform statuses
@@ -50,6 +56,9 @@ class MultiPlatformPostingService:
         # Create main post record
         post = Post(
             user_id=user_id,
+            topic=topic,
+            tone=tone,
+            hashtag=hashtag,
             content=content,
             image_url=image_url,
             status=status,
@@ -344,6 +353,9 @@ class MultiPlatformPostingService:
         
         return {
             "id": post.id,
+            "topic": post.topic,
+            "tone": post.tone,
+            "hashtag": post.hashtag,
             "content": post.content,
             "image_url": post.image_url,
             "status": post.status,

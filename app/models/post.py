@@ -27,6 +27,11 @@ class Post(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=False, index=True)
     
+    # Generation inputs (original context for regeneration)
+    topic = Column(String(500), nullable=True)  # What the content is about
+    tone = Column(String(100), nullable=True)  # Tone used for generation
+    hashtag = Column(String(500), nullable=True)  # Hashtags provided
+    
     # Content
     content = Column(Text, nullable=True)
     image_url = Column(String(500), nullable=True)  # Single image URL
