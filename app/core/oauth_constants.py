@@ -53,4 +53,6 @@ class LinkedInOAuthURLs:
     
     @staticmethod
     def get_user_info_url() -> str:
-        return f"https://api.linkedin.com/{settings.LINKEDIN_API_VERSION}/me"
+        # Use OpenID Connect userinfo endpoint for user profile
+        return "https://api.linkedin.com/v2/userinfo"
+

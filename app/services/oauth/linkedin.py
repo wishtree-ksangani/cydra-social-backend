@@ -95,15 +95,41 @@ class LinkedInOAuthProvider(BaseOAuthProvider):
     
     async def get_user_info(self, access_token: str) -> Dict[str, any]:
         """
-        Get LinkedIn user info.
-        Note: Using placeholder until OpenID Connect product is fully activated.
-        The account will still work for posting - username can be updated later.
+        Get LinkedIn user info using the userinfo endpoint.
+        Requires 'openid' and 'profile' scopes.
         """
-        import time
+        import logging
+        logger = logging.getLogger(__name__)
         
-        return {
-            "user_id": f"linkedin_{int(time.time())}",
-            "username": "LinkedIn User",
-            "name": "LinkedIn User",
-            "email": None,
-        }
+        async with httpx.AsyncClient() as client:
+            try:
+                logger.info(f"LinkedIn: Fetching user info from {self.user_info_url}")
+                response = await client.get(
+                    self.user_info_url,
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                logger.info(f"LinkedIn: Response status {response.status_code}")
+                response.raise_for_status()
+                user_data = response.json()
+                logger.info(f"LinkedIn: User data received: {user_data}")
+                
+                # OpenID Connect userinfo response
+                # Fields: sub, name, given_name, family_name, picture, email
+                return {
+                    "user_id": user_data.get("sub", ""),
+                    "username": user_data.get("name", "LinkedIn User"),
+                    "name": user_data.get("name", "LinkedIn User"),
+                    "email": user_data.get("email"),
+                }
+            except Exception as e:
+                # Fallback if userinfo endpoint fails
+                logger.error(f"LinkedIn: Failed to get user info: {e}")
+                import time
+                return {
+                    "user_id": f"linkedin_{int(time.time())}",
+                    "username": "LinkedIn User",
+                    "name": "LinkedIn User",
+                    "email": None,
+                }
+
+
