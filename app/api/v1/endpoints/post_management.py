@@ -60,6 +60,25 @@ class UpdatePostRequest(BaseModel):
     scheduled_at: Optional[str] = None
 
 
+class TimeSeriesDataPoint(BaseModel):
+    """Single data point in time series"""
+    period: str           # Date or period label (e.g., "2025-12-23", "2025-W51", "2025-12")
+    total: int
+    published: int
+    failed: int
+    scheduled: int
+    draft: int
+
+
+class TimeSeriesResponse(BaseModel):
+    """Response for time series statistics"""
+    group_by: str         # "day" | "week" | "month"
+    start_date: str
+    end_date: str
+    data: List[TimeSeriesDataPoint]
+    summary: dict         # Overall summary for the period
+
+
 # ==================== List & Filter Posts ====================
 
 @router.get("/", response_model=List[PostListItem])
@@ -512,3 +531,127 @@ async def get_platform_stats(
         ))
     
     return platform_stats
+
+
+@router.get("/stats/timeseries", response_model=TimeSeriesResponse)
+async def get_timeseries_stats(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    group_by: str = Query("day", description="Group by: day, week, or month"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get time-series post statistics for charting.
+    
+    **Parameters:**
+    - `start_date`: Start of date range (YYYY-MM-DD)
+    - `end_date`: End of date range (YYYY-MM-DD)
+    - `group_by`: Grouping period - "day" | "week" | "month"
+    
+    **Returns:**
+    Time-series data points with post counts grouped by period.
+    """
+    # Validate group_by
+    if group_by not in ["day", "week", "month"]:
+        raise HTTPException(status_code=400, detail="group_by must be 'day', 'week', or 'month'")
+    
+    # Parse dates
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
+    if start_dt > end_dt:
+        raise HTTPException(status_code=400, detail="start_date must be before end_date")
+    
+    # Get all posts in date range
+    result = await db.execute(
+        select(Post).where(
+            Post.user_id == current_user.id,
+            Post.created_at >= start_dt,
+            Post.created_at <= end_dt
+        ).order_by(Post.created_at)
+    )
+    posts = result.scalars().all()
+    
+    # Group posts by period
+    grouped_data = {}
+    summary = {"total": 0, "published": 0, "failed": 0, "scheduled": 0, "draft": 0}
+    
+    for post in posts:
+        # Determine period key based on grouping
+        if group_by == "day":
+            period_key = post.created_at.strftime("%Y-%m-%d")
+        elif group_by == "week":
+            # ISO week format: YYYY-Wnn
+            period_key = post.created_at.strftime("%Y-W%W")
+        else:  # month
+            period_key = post.created_at.strftime("%Y-%m")
+        
+        # Initialize period if not exists
+        if period_key not in grouped_data:
+            grouped_data[period_key] = {
+                "total": 0, "published": 0, "failed": 0, "scheduled": 0, "draft": 0
+            }
+        
+        # Count by status
+        grouped_data[period_key]["total"] += 1
+        summary["total"] += 1
+        
+        if post.status == "published":
+            grouped_data[period_key]["published"] += 1
+            summary["published"] += 1
+        elif post.status == "failed":
+            grouped_data[period_key]["failed"] += 1
+            summary["failed"] += 1
+        elif post.status == "scheduled":
+            grouped_data[period_key]["scheduled"] += 1
+            summary["scheduled"] += 1
+        elif post.status == "draft":
+            grouped_data[period_key]["draft"] += 1
+            summary["draft"] += 1
+    
+    # Generate all periods in range (to include empty periods)
+    all_periods = []
+    current = start_dt
+    
+    while current <= end_dt:
+        if group_by == "day":
+            period_key = current.strftime("%Y-%m-%d")
+            current += timedelta(days=1)
+        elif group_by == "week":
+            period_key = current.strftime("%Y-W%W")
+            current += timedelta(weeks=1)
+        else:  # month
+            period_key = current.strftime("%Y-%m")
+            # Move to next month
+            if current.month == 12:
+                current = current.replace(year=current.year + 1, month=1, day=1)
+            else:
+                current = current.replace(month=current.month + 1, day=1)
+        
+        if period_key not in all_periods:
+            all_periods.append(period_key)
+    
+    # Build response data with all periods
+    data_points = []
+    for period in all_periods:
+        stats = grouped_data.get(period, {"total": 0, "published": 0, "failed": 0, "scheduled": 0, "draft": 0})
+        data_points.append(TimeSeriesDataPoint(
+            period=period,
+            total=stats["total"],
+            published=stats["published"],
+            failed=stats["failed"],
+            scheduled=stats["scheduled"],
+            draft=stats["draft"]
+        ))
+    
+    return TimeSeriesResponse(
+        group_by=group_by,
+        start_date=start_date,
+        end_date=end_date,
+        data=data_points,
+        summary=summary
+    )
