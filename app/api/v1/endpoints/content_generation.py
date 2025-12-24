@@ -13,6 +13,8 @@ from app.core.database import get_db
 from app.api.dependencies.auth import get_current_user
 from app.models.user import User
 from app.models.workspace import Workspace
+from app.models.agent import Agent
+
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +133,20 @@ async def generate_content(
             "timezone": workspace.timezone
         }
     
+    # Get all agents
+    agents_result = await db.execute(select(Agent).order_by(Agent.name))
+    agents = agents_result.scalars().all()
+    
+    # Build agents list
+    agents_info = [
+        {
+            "name": agent.name,
+            "designation": agent.designation,
+            "description": agent.description
+        }
+        for agent in agents
+    ]
+    
     try:
         # Call n8n webhook
         async with httpx.AsyncClient() as client:
@@ -141,7 +157,8 @@ async def generate_content(
                     "tone": request.tone,
                     "hashtag": request.hashtag,
                     "platforms": request.platforms,
-                    "workspace": workspace_info
+                    "workspace": workspace_info,
+                    "agents": agents_info  # All available agents
                 },
                 timeout=60.0  # 60 second timeout for AI generation
             )
@@ -282,6 +299,20 @@ async def generate_image(
             "timezone": workspace.timezone
         }
     
+    # Get all agents
+    agents_result = await db.execute(select(Agent).order_by(Agent.name))
+    agents = agents_result.scalars().all()
+    
+    # Build agents list
+    agents_info = [
+        {
+            "name": agent.name,
+            "designation": agent.designation,
+            "description": agent.description
+        }
+        for agent in agents
+    ]
+    
     try:
         # Call n8n webhook with all platforms
         async with httpx.AsyncClient() as client:
@@ -292,7 +323,8 @@ async def generate_image(
                     "tone": request.tone,
                     "hashtag": request.hashtag,
                     "platforms": request.platforms,
-                    "workspace": workspace_info
+                    "workspace": workspace_info,
+                    "agents": agents_info  # All available agents
                 },
                 timeout=120.0  # 120 second timeout for image generation
             )
