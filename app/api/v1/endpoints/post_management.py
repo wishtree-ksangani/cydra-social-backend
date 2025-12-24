@@ -21,8 +21,7 @@ router = APIRouter()
 class PostListItem(BaseModel):
     """Post list item schema"""
     id: int
-    content: Optional[str]
-    image_url: Optional[str]
+    topic: Optional[str]  # For display in list
     status: str  # draft | scheduled | publishing | published | failed
     scheduled_at: Optional[str]
     created_at: str
@@ -30,6 +29,7 @@ class PostListItem(BaseModel):
     completed_count: int
     failed_count: int
     in_progress_count: int
+
 
 
 class PostStats(BaseModel):
@@ -54,10 +54,12 @@ class PlatformStats(BaseModel):
 
 
 class UpdatePostRequest(BaseModel):
-    """Update post request"""
-    content: Optional[str] = None
-    image_url: Optional[str] = None
+    """Update post request - updates post metadata, not platform content"""
+    topic: Optional[str] = None
+    tone: Optional[str] = None
+    hashtag: Optional[str] = None
     scheduled_at: Optional[str] = None
+
 
 
 class TimeSeriesDataPoint(BaseModel):
@@ -145,8 +147,7 @@ async def list_posts(
         
         post_items.append(PostListItem(
             id=post.id,
-            content=post.content,
-            image_url=post.image_url,
+            topic=post.topic,
             status=post.status,
             scheduled_at=post.scheduled_at.isoformat() if post.scheduled_at else None,
             created_at=post.created_at.isoformat(),
@@ -186,9 +187,10 @@ async def update_post(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Update a scheduled post.
+    Update a draft or scheduled post.
     
-    **Note:** Only scheduled posts that haven't been processed can be updated.
+    **Note:** Only draft/scheduled posts that haven't been processed can be updated.
+    For platform content updates, use PUT /posts/{post_id}/platforms.
     """
     # Get post
     result = await db.execute(
@@ -202,12 +204,15 @@ async def update_post(
     if post.status not in ["draft", "scheduled"]:
         raise HTTPException(status_code=400, detail="Cannot update post that has already been processed")
     
-    # Update fields
-    if request.content is not None:
-        post.content = request.content
+    # Update post metadata fields
+    if request.topic is not None:
+        post.topic = request.topic
     
-    if request.image_url is not None:
-        post.image_url = request.image_url
+    if request.tone is not None:
+        post.tone = request.tone
+    
+    if request.hashtag is not None:
+        post.hashtag = request.hashtag
     
     if request.scheduled_at is not None:
         try:
@@ -224,7 +229,120 @@ async def update_post(
     return await MultiPlatformPostingService.get_post_status(db, post_id, current_user.id)
 
 
+# ==================== Replace Entire Post (PUT) ====================
+
+class PlatformInput(BaseModel):
+    """Platform configuration for creating/updating"""
+    platform: str  # facebook, instagram, twitter, linkedin
+    page_account_id: Optional[int] = None  # For Facebook/Instagram
+    social_account_id: Optional[int] = None  # For Twitter/LinkedIn
+    content: str  # Content for this platform (required)
+    image_url: Optional[str] = None  # Image URL for this platform
+
+
+class FullPostUpdate(BaseModel):
+    """Full post update - replaces entire post"""
+    topic: Optional[str] = None
+    tone: Optional[str] = None
+    hashtag: Optional[str] = None
+    scheduled_at: Optional[str] = None
+    platforms: List[PlatformInput]
+
+
+@router.put("/{post_id}")
+async def replace_post(
+    post_id: int,
+    request: FullPostUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Replace entire post - updates both metadata and all platforms.
+    
+    This is a complete replacement - existing platforms are deleted and replaced
+    with the new ones provided.
+    
+    **Note:** Only draft/scheduled posts can be updated.
+    """
+    # Get post
+    result = await db.execute(
+        select(Post).where(Post.id == post_id, Post.user_id == current_user.id)
+    )
+    post = result.scalars().first()
+    
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    if post.status not in ["draft", "scheduled"]:
+        raise HTTPException(status_code=400, detail="Cannot update post that has already been processed")
+    
+    if not request.platforms:
+        raise HTTPException(status_code=400, detail="At least one platform is required")
+    
+    # Update post metadata
+    if request.topic is not None:
+        post.topic = request.topic
+    if request.tone is not None:
+        post.tone = request.tone
+    if request.hashtag is not None:
+        post.hashtag = request.hashtag
+    
+    if request.scheduled_at is not None:
+        try:
+            scheduled_at = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
+            post.scheduled_at = scheduled_at
+            if post.status == "draft":
+                post.status = "scheduled"
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at format")
+    
+    # Delete existing platforms
+    existing_result = await db.execute(
+        select(PostPlatform).where(PostPlatform.post_id == post_id)
+    )
+    existing_platforms = existing_result.scalars().all()
+    for existing in existing_platforms:
+        await db.delete(existing)
+    
+    # Create new platform entries
+    for platform_config in request.platforms:
+        platform = platform_config.platform
+        
+        # Validate platform config
+        if platform in ["facebook", "instagram"]:
+            if not platform_config.page_account_id:
+                raise HTTPException(status_code=400, detail=f"{platform} requires page_account_id")
+            account_id = platform_config.page_account_id
+        elif platform in ["twitter", "linkedin"]:
+            if not platform_config.social_account_id:
+                raise HTTPException(status_code=400, detail=f"{platform} requires social_account_id")
+            account_id = platform_config.social_account_id
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid platform: {platform}")
+        
+        # Get account name
+        account_name = await MultiPlatformPostingService._get_account_name(
+            db, platform, platform_config.dict()
+        )
+        
+        post_platform = PostPlatform(
+            post_id=post.id,
+            platform=platform,
+            account_id=account_id,
+            account_name=account_name,
+            content=platform_config.content,
+            image_url=platform_config.image_url,
+            status=PostStatus.QUEUED
+        )
+        db.add(post_platform)
+    
+    await db.commit()
+    
+    return await MultiPlatformPostingService.get_post_status(db, post_id, current_user.id)
+
+
 # ==================== Delete Post ====================
+
 
 @router.delete("/{post_id}")
 async def delete_post(
@@ -263,6 +381,89 @@ async def delete_post(
     await db.commit()
     
     return {"success": True, "message": "Post deleted successfully"}
+
+
+# ==================== Update Platforms ====================
+
+class PlatformUpdate(BaseModel):
+    """Platform update configuration"""
+    platform: str  # facebook, instagram, twitter, linkedin
+    page_account_id: Optional[int] = None  # For Facebook/Instagram
+    social_account_id: Optional[int] = None  # For Twitter/LinkedIn
+    content: str  # Content for this platform (required)
+    image_url: Optional[str] = None  # Image URL for this platform
+
+
+@router.put("/{post_id}/platforms")
+async def update_post_platforms(
+    post_id: int,
+    platforms: List[PlatformUpdate],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Replace all platforms for a draft/scheduled post.
+    
+    This allows adding, removing, or updating platforms and their content.
+    
+    **Note:** Only draft/scheduled posts can have their platforms updated.
+    """
+    # Get post
+    result = await db.execute(
+        select(Post).where(Post.id == post_id, Post.user_id == current_user.id)
+    )
+    post = result.scalars().first()
+    
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    if post.status not in ["draft", "scheduled"]:
+        raise HTTPException(status_code=400, detail="Cannot update platforms for a post that has already been processed")
+    
+    if not platforms:
+        raise HTTPException(status_code=400, detail="At least one platform is required")
+    
+    # Delete existing platforms
+    existing_result = await db.execute(
+        select(PostPlatform).where(PostPlatform.post_id == post_id)
+    )
+    existing_platforms = existing_result.scalars().all()
+    for existing in existing_platforms:
+        await db.delete(existing)
+    
+    # Create new platform entries
+    for platform_config in platforms:
+        platform = platform_config.platform
+        
+        # Validate platform config
+        if platform in ["facebook", "instagram"]:
+            if not platform_config.page_account_id:
+                raise HTTPException(status_code=400, detail=f"{platform} requires page_account_id")
+            account_id = platform_config.page_account_id
+        else:
+            if not platform_config.social_account_id:
+                raise HTTPException(status_code=400, detail=f"{platform} requires social_account_id")
+            account_id = platform_config.social_account_id
+        
+        # Get account name
+        account_name = await MultiPlatformPostingService._get_account_name(
+            db, platform, platform_config.dict()
+        )
+        
+        post_platform = PostPlatform(
+            post_id=post.id,
+            platform=platform,
+            account_id=account_id,
+            account_name=account_name,
+            content=platform_config.content,
+            image_url=platform_config.image_url,
+            status=PostStatus.QUEUED
+        )
+        db.add(post_platform)
+    
+    await db.commit()
+    
+    return await MultiPlatformPostingService.get_post_status(db, post_id, current_user.id)
 
 
 # ==================== Cancel Scheduled Post ====================

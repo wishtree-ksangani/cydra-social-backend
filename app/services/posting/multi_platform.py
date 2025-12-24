@@ -26,8 +26,6 @@ class MultiPlatformPostingService:
     async def create_multi_platform_post(
         db: AsyncSession,
         user_id: int,
-        content: Optional[str],
-        image_url: Optional[str],
         platforms: List[Dict[str, any]],
         status: str = "draft",
         scheduled_at: Optional[datetime] = None,
@@ -41,9 +39,7 @@ class MultiPlatformPostingService:
         Args:
             db: Database session
             user_id: User ID
-            content: Post content/text
-            image_url: Single image URL
-            platforms: List of platform configs
+            platforms: List of platform configs (each with content and image_url)
             status: Post status - "draft" | "scheduled" | "publishing"
             scheduled_at: When to post (required if status="scheduled")
             topic: Original topic for content generation
@@ -53,14 +49,12 @@ class MultiPlatformPostingService:
         Returns:
             Post object with platform statuses
         """
-        # Create main post record
+        # Create main post record (no content here, it's per-platform)
         post = Post(
             user_id=user_id,
             topic=topic,
             tone=tone,
             hashtag=hashtag,
-            content=content,
-            image_url=image_url,
             status=status,
             scheduled_at=scheduled_at
         )
@@ -77,7 +71,7 @@ class MultiPlatformPostingService:
                 db, platform, platform_config
             )
             
-            # Get platform-specific content (overrides global if provided)
+            # Get content for this platform (required per-platform)
             platform_content = platform_config.get("content")
             platform_image_url = platform_config.get("image_url")
             
@@ -86,8 +80,8 @@ class MultiPlatformPostingService:
                 platform=platform,
                 account_id=platform_config.get("page_account_id") or platform_config.get("social_account_id"),
                 account_name=account_name,
-                platform_content=platform_content,  # Store platform-specific content
-                platform_image_url=platform_image_url,  # Store platform-specific image
+                content=platform_content,  # Each platform has its own content
+                image_url=platform_image_url,  # Each platform has its own image
                 status=PostStatus.QUEUED
             )
             db.add(post_platform)
@@ -103,11 +97,12 @@ class MultiPlatformPostingService:
             
             asyncio.create_task(
                 MultiPlatformPostingService._process_platforms(
-                    post.id, platform_entries, content, image_url, platforms
+                    post.id, platform_entries, platforms
                 )
             )
         
         return post
+
     
     @staticmethod
     async def _get_account_name(
@@ -135,8 +130,6 @@ class MultiPlatformPostingService:
     async def _process_platforms(
         post_id: int,
         platform_entries: List[PostPlatform],
-        content: Optional[str],
-        image_url: Optional[str],
         platforms: List[Dict[str, any]]
     ):
         """Process posting to all platforms (runs in background)"""
@@ -162,9 +155,9 @@ class MultiPlatformPostingService:
                             config = p
                             break
                 
-                # Process each platform one at a time
+                # Process each platform one at a time (uses platform_entry.content)
                 await MultiPlatformPostingService._post_to_platform(
-                    db, platform_entry, content, image_url, config
+                    db, platform_entry, config
                 )
             
             # Update post status to published after all platforms are processed
@@ -184,8 +177,6 @@ class MultiPlatformPostingService:
     async def _post_to_platform(
         db: AsyncSession,
         post_platform: PostPlatform,
-        content: Optional[str],
-        image_url: Optional[str],
         platform_config: Dict[str, any]
     ):
         """Post to a single platform and update status"""
@@ -197,28 +188,28 @@ class MultiPlatformPostingService:
             post_platform.started_at = datetime.now(timezone.utc)
             await db.commit()
             
-            # Use platform-specific content if available, otherwise use global
-            final_content = post_platform.platform_content if post_platform.platform_content is not None else content
-            final_image_url = post_platform.platform_image_url if post_platform.platform_image_url is not None else image_url
+            # Use content from this platform entry
+            content = post_platform.content
+            image_url = post_platform.image_url
             
             result = None
             
             # Post based on platform
             if platform == "facebook":
                 result = await MultiPlatformPostingService._post_facebook(
-                    db, platform_config, final_content, final_image_url
+                    db, platform_config, content, image_url
                 )
             elif platform == "instagram":
                 result = await MultiPlatformPostingService._post_instagram(
-                    db, platform_config, final_content, final_image_url
+                    db, platform_config, content, image_url
                 )
             elif platform == "twitter":
                 result = await MultiPlatformPostingService._post_twitter(
-                    db, platform_config, final_content, final_image_url
+                    db, platform_config, content, image_url
                 )
             elif platform == "linkedin":
                 result = await MultiPlatformPostingService._post_linkedin(
-                    db, platform_config, final_content, final_image_url
+                    db, platform_config, content, image_url
                 )
             
             # Update success
@@ -234,6 +225,7 @@ class MultiPlatformPostingService:
             post_platform.completed_at = datetime.now(timezone.utc)
         
         await db.commit()
+
     
     @staticmethod
     async def _post_facebook(
@@ -356,8 +348,6 @@ class MultiPlatformPostingService:
             "topic": post.topic,
             "tone": post.tone,
             "hashtag": post.hashtag,
-            "content": post.content,
-            "image_url": post.image_url,
             "status": post.status,
             "scheduled_at": post.scheduled_at.isoformat() if post.scheduled_at else None,
             "created_at": post.created_at.isoformat() if post.created_at else None,
@@ -365,6 +355,8 @@ class MultiPlatformPostingService:
                 {
                     "platform": p.platform,
                     "account_name": p.account_name,
+                    "content": p.content,  # Content for this platform
+                    "image_url": p.image_url,  # Image for this platform
                     "status": p.status.value,
                     "post_id": p.platform_post_id,
                     "platform_url": p.platform_url,
@@ -376,3 +368,4 @@ class MultiPlatformPostingService:
                 for p in platforms
             ]
         }
+

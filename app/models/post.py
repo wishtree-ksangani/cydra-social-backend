@@ -21,6 +21,7 @@ class Post(Base):
     Post model - Tracks posts across multiple platforms
     
     A single Post can have multiple PostPlatform entries (one per platform)
+    Content is stored per-platform in PostPlatform, not here.
     """
     __tablename__ = "posts"
     
@@ -31,10 +32,6 @@ class Post(Base):
     topic = Column(String(500), nullable=True)  # What the content is about
     tone = Column(String(100), nullable=True)  # Tone used for generation
     hashtag = Column(String(500), nullable=True)  # Hashtags provided
-    
-    # Content
-    content = Column(Text, nullable=True)
-    image_url = Column(String(500), nullable=True)  # Single image URL
     
     # Status: draft | scheduled | publishing | published | failed
     status = Column(String(50), default="draft", nullable=False)
@@ -47,11 +44,12 @@ class Post(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+
 class PostPlatform(Base):
     """
     PostPlatform model - Tracks individual platform posting status
     
-    Each platform has its own status, post_id, and error tracking
+    Each platform has its own content, image, status, and error tracking
     """
     __tablename__ = "post_platforms"
     
@@ -63,9 +61,10 @@ class PostPlatform(Base):
     account_id = Column(Integer, nullable=False)  # page_account_id or social_account_id
     account_name = Column(String(255), nullable=True)
     
-    # Platform-specific content (overrides post.content and post.image_url if set)
-    platform_content = Column(Text, nullable=True)  # Platform-specific content
-    platform_image_url = Column(String(500), nullable=True)  # Platform-specific image
+    # Content for this platform (each platform has its own content)
+    content = Column("platform_content", Text, nullable=True)  # Post content for this platform
+    image_url = Column("platform_image_url", String(500), nullable=True)  # Image URL for this platform
+
     
     # Status tracking
     status = Column(SQLEnum(PostStatus), default=PostStatus.QUEUED, nullable=False)

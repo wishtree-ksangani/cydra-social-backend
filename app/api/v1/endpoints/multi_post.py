@@ -18,8 +18,8 @@ class PlatformConfig(BaseModel):
     platform: str  # facebook, instagram, twitter, linkedin
     page_account_id: Optional[int] = None  # For Facebook/Instagram
     social_account_id: Optional[int] = None  # For Twitter/LinkedIn
-    content: Optional[str] = None  # Platform-specific content (overrides global)
-    image_url: Optional[str] = None  # Platform-specific image (overrides global)
+    content: str  # Content for this platform (required)
+    image_url: Optional[str] = None  # Image URL for this platform
 
 
 class MultiPostRequest(BaseModel):
@@ -27,9 +27,7 @@ class MultiPostRequest(BaseModel):
     topic: Optional[str] = None  # Original topic for content generation
     tone: Optional[str] = None  # Tone used for generation
     hashtag: Optional[str] = None  # Hashtags provided
-    content: Optional[str] = None  # Global content (optional if platform-specific provided)
-    image_url: Optional[str] = None  # Global image (optional if platform-specific provided)
-    platforms: List[PlatformConfig]
+    platforms: List[PlatformConfig]  # Each platform has its own content
     status: Optional[str] = "immediate"  # "draft" | "scheduled" | "immediate"
     scheduled_at: Optional[str] = None  # ISO 8601 datetime string (required if status="scheduled")
 
@@ -38,6 +36,8 @@ class PlatformStatus(BaseModel):
     """Status of posting to a single platform"""
     platform: str
     account_name: str
+    content: Optional[str] = None  # Content for this platform
+    image_url: Optional[str] = None  # Image URL for this platform
     status: str  # queued, in_progress, completed, failed
     post_id: Optional[str] = None
     platform_url: Optional[str] = None
@@ -47,14 +47,13 @@ class PlatformStatus(BaseModel):
     completed_at: Optional[str] = None
 
 
+
 class MultiPostResponse(BaseModel):
     """Response schema for multi-platform posting"""
     id: int
     topic: Optional[str] = None
     tone: Optional[str] = None
     hashtag: Optional[str] = None
-    content: Optional[str]
-    image_url: Optional[str] = None
     status: str = "draft"  # draft | scheduled | publishing | published | failed
     scheduled_at: Optional[str] = None
     platforms: List[PlatformStatus]
@@ -159,8 +158,6 @@ async def create_multi_platform_post(
             topic=request.topic,
             tone=request.tone,
             hashtag=request.hashtag,
-            content=request.content,
-            image_url=request.image_url,
             platforms=[p.dict() for p in request.platforms],
             status=request.status,
             scheduled_at=scheduled_at

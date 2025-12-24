@@ -107,8 +107,6 @@ class PostScheduler:
                     await MultiPlatformPostingService._process_platforms(
                         post.id,
                         platforms,
-                        post.content,
-                        post.image_url,
                         platform_configs
                     )
                     
