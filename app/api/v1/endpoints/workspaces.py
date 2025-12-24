@@ -22,10 +22,12 @@ async def create_workspace(
     
     # Create workspace
     new_workspace = Workspace(
-        business_name=workspace_in.business_name,
-        industry=workspace_in.industry,
-        default_tone=workspace_in.default_tone,
+        name=workspace_in.name,
+        type=workspace_in.type,
         timezone=workspace_in.timezone,
+        industry=workspace_in.industry,
+        description=workspace_in.description,
+        address=workspace_in.address,
         user_id=current_user.id
     )
     db.add(new_workspace)

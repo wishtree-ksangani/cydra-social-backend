@@ -127,11 +127,14 @@ async def generate_content(
     workspace_info = None
     if workspace:
         workspace_info = {
-            "business_name": workspace.business_name,
+            "name": workspace.name,
+            "type": workspace.type,
+            "timezone": workspace.timezone,
             "industry": workspace.industry,
-            "default_tone": workspace.default_tone,
-            "timezone": workspace.timezone
+            "description": workspace.description,
+            "address": workspace.address
         }
+
     
     # Get all agents
     agents_result = await db.execute(select(Agent).order_by(Agent.name))
@@ -293,11 +296,14 @@ async def generate_image(
     workspace_info = None
     if workspace:
         workspace_info = {
-            "business_name": workspace.business_name,
+            "name": workspace.name,
+            "type": workspace.type,
+            "timezone": workspace.timezone,
             "industry": workspace.industry,
-            "default_tone": workspace.default_tone,
-            "timezone": workspace.timezone
+            "description": workspace.description,
+            "address": workspace.address
         }
+
     
     # Get all agents
     agents_result = await db.execute(select(Agent).order_by(Agent.name))
