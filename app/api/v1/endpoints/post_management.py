@@ -574,14 +574,12 @@ async def publish_draft(
         post.status = "publishing"
         await db.commit()
         
-        # Start posting
+        # Start posting (content is now per-platform, stored in PostPlatform)
         import asyncio
         asyncio.create_task(
             MultiPlatformPostingService._process_platforms(
                 post.id,
                 platforms,
-                post.content,
-                post.image_url,
                 platform_configs
             )
         )
